@@ -27,20 +27,20 @@ export class NextJSBuilder extends BaseBuilder {
       };
     } catch (error) {
       this.logger.error('Build failed:', error);
-      return {
-        success: false,
-        buildDir: '',
-        deploymentType: 'static',
-        framework: 'nextjs'
-      };
+      throw error; // Re-throw the error so it can be handled upstream
     }
   }
 
   private async needsSpecialHandling(): Promise<boolean> {
+    // Check if we have a .next directory but no out directory
     if (await fs.pathExists('.next')) {
-      const hasIndexHtml = await fs.pathExists('.next/server/app/index.html');
       const hasOutDir = await fs.pathExists('out');
-      return !hasOutDir && hasIndexHtml;
+      
+      if (!hasOutDir) {
+        // Check if this looks like SSR build
+        const hasServerDir = await fs.pathExists('.next/server');
+        return hasServerDir;
+      }
     }
     return false;
   }
@@ -51,39 +51,39 @@ export class NextJSBuilder extends BaseBuilder {
     const configFile = await this.findNextConfig();
     if (configFile) {
       this.logger.info(`Found ${configFile}`);
+      
+      // Check if already configured for static export
+      const content = await fs.readFile(configFile, 'utf8');
+      if (content.includes("output.*['\"]export['\"]")) {
+        this.logger.warn('Config shows static export but build didn\'t create \'out\' directory');
+      }
     }
 
-    console.log('\nDeployment options for Next.js:');
+    console.log('');
+    console.log('Deployment options for Next.js:');
     console.log('  1. Configure for static export (recommended - simpler)');
     console.log('  2. Use OpenNext for SSR deployment');
     console.log('  3. Exit and configure manually');
     console.log('');
 
-    // Use readline for better input handling
-    const readline = require('readline');
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
+    const choice = await this.promptUser('Choose option (1/2/3): ');
 
-    const choice = await new Promise<string>((resolve) => {
-      rl.question('Choose option (1/2/3): ', (answer: string) => {
-        rl.close();
-        resolve(answer.trim());
-      });
-    });
-
-    switch (choice) {
+    switch (choice.trim()) {
       case '1':
         await this.configureStaticExport(packageManager, configFile);
         break;
       case '2':
-        throw new Error('OpenNext setup not implemented yet');
+        await this.setupOpenNext(packageManager);
+        break;
       case '3':
-        throw new Error('User chose to exit - please configure Next.js manually');
+        throw new Error(`User chose to exit. Configuration options:
+• Static export: Add output: 'export' to next.config
+• OpenNext SSR: npm install @opennextjs/cloudflare && npx opennextjs-cloudflare build
+• Cloudflare Pages: Use @cloudflare/next-on-pages`);
       default:
-        this.logger.warn('Invalid choice, defaulting to static export');
-        await this.configureStaticExport(packageManager, configFile);
+        this.logger.warn('Invalid choice. Please enter 1, 2, or 3.');
+        // Recursively ask again
+        await this.handleNextJSConfiguration(packageManager);
     }
   }
 
@@ -109,7 +109,42 @@ export class NextJSBuilder extends BaseBuilder {
     if (await fs.pathExists('out') && (await fs.readdir('out')).length > 0) {
       this.logger.success('Static export completed - using out/ directory');
     } else {
-      throw new Error('Static export failed - no out/ directory created');
+      throw new Error(`Static export failed - no 'out' directory created
+• Check the build output above for errors
+• Make sure your app doesn't use server-side features
+• Try running: ${this.getBuildCommand(packageManager)}`);
+    }
+  }
+
+  private async setupOpenNext(packageManager: PackageManager): Promise<void> {
+    this.logger.info('Setting up OpenNext for SSR deployment...');
+    
+    // Check if OpenNext is installed
+    const packageJson = await fs.readJson('package.json');
+    const hasOpenNext = packageJson.dependencies?.['@opennextjs/cloudflare'] || 
+                       packageJson.devDependencies?.['@opennextjs/cloudflare'];
+    
+    if (!hasOpenNext) {
+      this.logger.info('Installing @opennextjs/cloudflare...');
+      const installCommand = this.getInstallCommand(packageManager, '@opennextjs/cloudflare');
+      await this.process.execWithOutput(installCommand);
+      this.logger.success('OpenNext installed');
+    }
+    
+    // Build with OpenNext
+    this.logger.info('Building with OpenNext...');
+    try {
+      await this.process.execWithOutput('npx opennextjs-cloudflare build');
+      
+      // Check if OpenNext generated the expected output
+      if (await fs.pathExists('.open-next')) {
+        this.logger.success('OpenNext build completed');
+      } else {
+        throw new Error('OpenNext build failed - no .open-next directory found');
+      }
+    } catch (error) {
+      throw new Error(`OpenNext build failed. Check OpenNext documentation: https://opennext.js.org/cloudflare
+Try: npx opennextjs-cloudflare build --help`);
     }
   }
 
@@ -154,20 +189,56 @@ module.exports = nextConfig
 `;
   }
 
+  private getBuildCommand(packageManager: PackageManager): string {
+    const commands = {
+      npm: 'npm run build',
+      pnpm: 'pnpm build',
+      yarn: 'yarn build',
+      bun: 'bun run build'
+    };
+    return commands[packageManager];
+  }
+
+  private getInstallCommand(packageManager: PackageManager, pkg: string): string {
+    const commands = {
+      npm: `npm install ${pkg}`,
+      pnpm: `pnpm add ${pkg}`,
+      yarn: `yarn add ${pkg}`,
+      bun: `bun add ${pkg}`
+    };
+    return commands[packageManager];
+  }
+
+  private async promptUser(question: string): Promise<string> {
+    const readline = require('readline');
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    return new Promise((resolve) => {
+      rl.question(question, (answer: string) => {
+        rl.close();
+        resolve(answer);
+      });
+    });
+  }
+
   async detectBuildOutput(): Promise<string> {
-    if (await fs.pathExists('out') && (await fs.readdir('out')).length > 0) {
-      return 'out';
+    // Check build directories in order of preference
+    const candidates = ['out', '.open-next', 'dist', 'build', '.next'];
+    
+    for (const dir of candidates) {
+      if (await fs.pathExists(dir)) {
+        const files = await fs.readdir(dir);
+        if (files.length > 0) {
+          this.logger.success(`Using ${dir}/ directory`);
+          return dir;
+        }
+      }
     }
     
-    if (await fs.pathExists('.open-next')) {
-      return '.open-next';
-    }
-    
-    if (await fs.pathExists('.next') && (await fs.readdir('.next')).length > 0) {
-      return '.next';
-    }
-    
-    throw new Error('No build output found');
+    throw new Error('No build output found. Checked: ' + candidates.join(', '));
   }
 
   async validateEnvironment(): Promise<boolean> {
@@ -178,6 +249,13 @@ module.exports = nextConfig
   private async determineDeploymentType(buildDir: string): Promise<DeploymentType> {
     if (buildDir === 'out') return 'static';
     if (buildDir === '.open-next') return 'opennext';
-    return 'ssr';
+    if (buildDir === '.next') {
+      // Check if it has both static and worker files (hybrid)
+      const hasWorker = await fs.pathExists('.next/_worker.js');
+      const hasStatic = await fs.pathExists('.next/static');
+      if (hasWorker && hasStatic) return 'hybrid';
+      if (hasWorker) return 'ssr';
+    }
+    return 'static';
   }
 }
