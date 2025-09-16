@@ -1,4 +1,5 @@
 import fs from 'fs-extra';
+import inquirer from 'inquirer';
 import { Logger } from '../utils/Logger.js';
 import { Process } from '../utils/Process.js';
 import { PackageManager } from '../types/index.js';
@@ -76,16 +77,19 @@ Or delete bun.lockb to use npm instead`);
     }
 
     this.logger.info('System npm is available');
-    console.log('🤔 Options:');
-    console.log('  1. Try to install pnpm');
-    console.log('  2. Use npm instead (recommended - will work fine)');
-    console.log('  3. Exit and install pnpm manually');
-    console.log('');
+    
+    const { choice } = await inquirer.prompt([{
+      type: 'list',
+      name: 'choice',
+      message: 'pnpm-lock.yaml found but pnpm not available. What would you like to do?',
+      choices: [
+        { name: 'Try to install pnpm', value: '1' },
+        { name: 'Use npm instead (recommended - will work fine)', value: '2' },
+        { name: 'Exit and install pnpm manually', value: '3' }
+      ]
+    }]);
 
-    // Simple readline implementation
-    const choice = await this.promptUser('Choose option (1/2/3): ');
-
-    switch (choice.trim()) {
+    switch (choice) {
       case '1':
         await this.installPnpm();
         break;
@@ -99,7 +103,7 @@ Or delete bun.lockb to use npm instead`);
   - Via curl: curl -fsSL https://get.pnpm.io/install.sh | sh -
 Then run quick-deploy again`);
       default:
-        this.logger.info('Invalid choice, defaulting to npm');
+        this.logger.info('Defaulting to npm');
         break;
     }
   }
@@ -156,15 +160,19 @@ Then run quick-deploy again`);
 
   private async handleYarnCorepackIssue(): Promise<void> {
     this.logger.warn('Yarn version mismatch detected - project requires newer Yarn via Corepack');
-    console.log('Options:');
-    console.log('  1. Enable Corepack and use project\'s Yarn version (recommended)');
-    console.log('  2. Use npm instead (delete yarn.lock)');
-    console.log('  3. Exit and handle manually');
-    console.log('');
+    
+    const { choice } = await inquirer.prompt([{
+      type: 'list',
+      name: 'choice',
+      message: 'How would you like to handle this?',
+      choices: [
+        { name: 'Enable Corepack and use project\'s Yarn version (recommended)', value: '1' },
+        { name: 'Use npm instead (delete yarn.lock)', value: '2' },
+        { name: 'Exit and handle manually', value: '3' }
+      ]
+    }]);
 
-    const choice = await this.promptUser('Choose option (1/2/3): ');
-
-    switch (choice.trim()) {
+    switch (choice) {
       case '1':
         await this.enableCorepack();
         break;
@@ -207,22 +215,6 @@ Or use npm: delete yarn.lock and run with npm`);
       bun: 'bun.lockb'
     };
     return lockFiles[packageManager];
-  }
-
-  private async promptUser(question: string): Promise<string> {
-    // Simple readline implementation
-    const readline = require('readline');
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-
-    return new Promise((resolve) => {
-      rl.question(question, (answer: string) => {
-        rl.close();
-        resolve(answer);
-      });
-    });
   }
 
   async validatePackageManager(packageManager?: PackageManager): Promise<void> {

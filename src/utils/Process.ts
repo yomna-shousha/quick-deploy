@@ -8,10 +8,8 @@ export class Process {
     this.logger.debug(`Executing: ${command}`);
 
     try {
-      const args = command.split(' ');
-      const cmd = args.shift();
-      if (!cmd) throw new Error('Empty command');
-
+      const { cmd, args } = this.parseCommand(command);
+      
       const result = await execa(cmd, args, {
         cwd: options.cwd || process.cwd(),
         env: { ...process.env, ...options.env },
@@ -31,9 +29,7 @@ export class Process {
     this.logger.debug(`Executing with output: ${command}`);
 
     try {
-      const args = command.split(' ');
-      const cmd = args.shift();
-      if (!cmd) throw new Error('Empty command');
+      const { cmd, args } = this.parseCommand(command);
 
       await execa(cmd, args, {
         cwd: options.cwd || process.cwd(),
@@ -45,12 +41,50 @@ export class Process {
     }
   }
 
+  private parseCommand(command: string): { cmd: string; args: string[] } {
+    // Handle quoted arguments properly
+    const args: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    let quoteChar = '';
+    
+    for (let i = 0; i < command.length; i++) {
+      const char = command[i];
+      
+      if ((char === '"' || char === "'") && !inQuotes) {
+        inQuotes = true;
+        quoteChar = char;
+      } else if (char === quoteChar && inQuotes) {
+        inQuotes = false;
+        quoteChar = '';
+      } else if (char === ' ' && !inQuotes) {
+        if (current) {
+          args.push(current);
+          current = '';
+        }
+      } else {
+        current += char;
+      }
+    }
+    
+    if (current) {
+      args.push(current);
+    }
+    
+    const cmd = args.shift();
+    if (!cmd) throw new Error('Empty command');
+    
+    return { cmd, args };
+  }
+
   async hasCommand(command: string): Promise<boolean> {
     try {
-      await execa('which', [command]);
+      // Use 'command -v' which is more universal than 'which'
+      await execa('command', ['-v', command]);
       return true;
     } catch {
       try {
+        // Fallback for Windows
         await execa('where', [command]);
         return true;
       } catch {
@@ -68,3 +102,4 @@ export class Process {
     }
   }
 }
+

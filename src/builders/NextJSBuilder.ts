@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
+import inquirer from 'inquirer';
 import { BaseBuilder } from './BaseBuilder.js';
 import { BuildOptions, BuildResult, DeploymentType, PackageManager } from '../types/index.js';
 
@@ -27,7 +28,7 @@ export class NextJSBuilder extends BaseBuilder {
       };
     } catch (error) {
       this.logger.error('Build failed:', error);
-      throw error; // Re-throw the error so it can be handled upstream
+      throw error;
     }
   }
 
@@ -59,16 +60,18 @@ export class NextJSBuilder extends BaseBuilder {
       }
     }
 
-    console.log('');
-    console.log('Deployment options for Next.js:');
-    console.log('  1. Configure for static export (recommended - simpler)');
-    console.log('  2. Use OpenNext for SSR deployment');
-    console.log('  3. Exit and configure manually');
-    console.log('');
+    const { choice } = await inquirer.prompt([{
+      type: 'list',
+      name: 'choice',
+      message: 'Next.js deployment options:',
+      choices: [
+        { name: 'Configure for static export (recommended - simpler)', value: '1' },
+        { name: 'Use OpenNext for SSR deployment', value: '2' },
+        { name: 'Exit and configure manually', value: '3' }
+      ]
+    }]);
 
-    const choice = await this.promptUser('Choose option (1/2/3): ');
-
-    switch (choice.trim()) {
+    switch (choice) {
       case '1':
         await this.configureStaticExport(packageManager, configFile);
         break;
@@ -81,9 +84,7 @@ export class NextJSBuilder extends BaseBuilder {
 • OpenNext SSR: npm install @opennextjs/cloudflare && npx opennextjs-cloudflare build
 • Cloudflare Pages: Use @cloudflare/next-on-pages`);
       default:
-        this.logger.warn('Invalid choice. Please enter 1, 2, or 3.');
-        // Recursively ask again
-        await this.handleNextJSConfiguration(packageManager);
+        throw new Error('Invalid deployment choice');
     }
   }
 
@@ -207,21 +208,6 @@ module.exports = nextConfig
       bun: `bun add ${pkg}`
     };
     return commands[packageManager];
-  }
-
-  private async promptUser(question: string): Promise<string> {
-    const readline = require('readline');
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
-
-    return new Promise((resolve) => {
-      rl.question(question, (answer: string) => {
-        rl.close();
-        resolve(answer);
-      });
-    });
   }
 
   async detectBuildOutput(): Promise<string> {

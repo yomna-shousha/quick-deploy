@@ -2,9 +2,9 @@ import fs from 'fs-extra';
 import { BaseBuilder } from './BaseBuilder.js';
 import { BuildOptions, BuildResult, DeploymentType } from '../types/index.js';
 
-export class NuxtBuilder extends BaseBuilder {
+export class SvelteBuilder extends BaseBuilder {
   async build(options: BuildOptions): Promise<BuildResult> {
-    this.logger.info('Building Nuxt project...');
+    this.logger.info('Building Svelte project...');
 
     try {
       await this.runBuildCommand(options.packageManager);
@@ -15,35 +15,41 @@ export class NuxtBuilder extends BaseBuilder {
         success: true,
         buildDir,
         deploymentType,
-        framework: 'nuxt'
+        framework: 'svelte'
       };
     } catch (error) {
-      this.logger.error('Nuxt build failed:', error);
-      throw error; // Re-throw instead of returning failed result
+      this.logger.error('Svelte build failed:', error);
+      throw error;
     }
   }
 
   async detectBuildOutput(): Promise<string> {
     const candidates = [
-      '.output/public', // Nuxt 3 static
-      '.output', // Nuxt 3 with nitro
+      '.svelte-kit/output', // SvelteKit
+      'build', // Svelte
       'dist',
-      'build'
+      'public'
     ];
 
     return this.findBuildDirectory(candidates);
   }
 
   private async determineDeploymentType(buildDir: string): Promise<DeploymentType> {
-    // Check for Nitro server build
-    if (buildDir === '.output' && await fs.pathExists('.output/server')) {
-      return 'ssr';
+    // Check for SvelteKit adapter output
+    if (buildDir.includes('.svelte-kit')) {
+      // Check for server files indicating SSR
+      if (await fs.pathExists('.svelte-kit/output/server')) {
+        return 'ssr';
+      }
     }
     return 'static';
   }
 
   async validateEnvironment(): Promise<boolean> {
     const packageJson = await fs.readJson('package.json');
-    return !!packageJson.dependencies?.nuxt || !!packageJson.devDependencies?.nuxt;
+    return !!packageJson.dependencies?.svelte || 
+           !!packageJson.devDependencies?.svelte ||
+           !!packageJson.dependencies?.['@sveltejs/kit'] ||
+           !!packageJson.devDependencies?.['@sveltejs/kit'];
   }
 }

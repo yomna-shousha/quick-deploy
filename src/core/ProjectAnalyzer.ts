@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
+import readline from 'readline';
 import { Logger } from '../utils/Logger.js';
 import { Framework, PackageManager, ProjectConfig } from '../types/index.js';
 
@@ -50,12 +51,30 @@ export class ProjectAnalyzer {
         this.logger.info('Found examples directory with deployable projects:');
         const examples = await fs.readdir('examples');
         console.log(examples.slice(0, 10).join('\n'));
+        console.log('');
         
-        throw new Error(`This appears to be framework source code. Create a new project instead:
-  cd ~
-  npm create astro@latest my-site
-  cd my-site
-  quick-deploy`);
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout
+        });
+        
+        const exampleName = await new Promise<string>((resolve) => {
+          rl.question('Enter example name to deploy (or \'q\' to quit): ', (answer) => {
+            rl.close();
+            resolve(answer.trim());
+          });
+        });
+        
+        if (exampleName === 'q') {
+          console.log('Exiting');
+          process.exit(0);
+        } else if (exampleName && await fs.pathExists(`examples/${exampleName}`)) {
+          process.chdir(`examples/${exampleName}`);
+          this.logger.success(`Switched to examples/${exampleName}`);
+          return; // Continue with deployment from the example directory
+        } else {
+          throw new Error(`Example '${exampleName}' not found. Check available examples: ls examples/\nOr create a new project: npm create astro@latest my-site`);
+        }
       } else if (await fs.pathExists('packages')) {
         this.logger.info('Found packages directory:');
         const packages = await fs.readdir('packages');
