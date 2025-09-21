@@ -1,0 +1,225 @@
+// src/core/FrameworkDetector.ts
+import fs from 'fs-extra';
+import { Logger } from '../utils/Logger.js';
+
+interface FrameworkConfig {
+  name: string;
+  detection: {
+    configFiles?: string[];
+    dependencies?: string[];
+  };
+  build: {
+    command: string;
+    outputDir: string;
+  };
+  deploy: {
+    type: 'static' | 'ssr';
+    adapter?: string;
+    compatibility_flags?: string[];
+  };
+  dev: {
+    command: string;
+    port?: number;
+  };
+}
+
+const FRAMEWORKS: FrameworkConfig[] = [
+  {
+    name: 'nextjs',
+    detection: {
+      configFiles: ['next.config.js', 'next.config.mjs', 'next.config.ts'],
+      dependencies: ['next']
+    },
+    build: {
+      command: 'npm run build',
+      outputDir: '.open-next'
+    },
+    deploy: {
+      type: 'ssr',
+      compatibility_flags: ['nodejs_compat', 'global_fetch_strictly_public']
+    },
+    dev: {
+      command: 'npm run dev',
+      port: 3000
+    }
+  },
+  {
+    name: 'astro',
+    detection: {
+      configFiles: ['astro.config.mjs', 'astro.config.js', 'astro.config.ts'],
+      dependencies: ['astro']
+    },
+    build: {
+      command: 'npm run build',
+      outputDir: 'dist'
+    },
+    deploy: {
+      type: 'ssr',
+      adapter: '@astrojs/cloudflare',
+      compatibility_flags: ['nodejs_compat']
+    },
+    dev: {
+      command: 'npm run dev',
+      port: 4321
+    }
+  },
+  {
+    name: 'svelte',
+    detection: {
+      configFiles: ['svelte.config.js'],
+      dependencies: ['svelte', '@sveltejs/kit']
+    },
+    build: {
+      command: 'npm run build',
+      outputDir: '.svelte-kit/cloudflare'
+    },
+    deploy: {
+      type: 'ssr',
+      adapter: '@sveltejs/adapter-cloudflare'
+    },
+    dev: {
+      command: 'npm run dev',
+      port: 5173
+    }
+  },
+  {
+    name: 'remix',
+    detection: {
+      configFiles: ['remix.config.js'],
+      dependencies: ['@remix-run/node', '@remix-run/react']
+    },
+    build: {
+      command: 'npm run build',
+      outputDir: 'build'
+    },
+    deploy: {
+      type: 'ssr',
+      compatibility_flags: ['nodejs_compat']
+    },
+    dev: {
+      command: 'npm run dev',
+      port: 3000
+    }
+  },
+  {
+    name: 'react',
+    detection: {
+      configFiles: ['vite.config.js', 'vite.config.ts', 'vite.config.mjs'],
+      dependencies: ['vite', 'react']
+    },
+    build: {
+      command: 'npm run build',
+      outputDir: 'dist'
+    },
+    deploy: {
+      type: 'static'
+    },
+    dev: {
+      command: 'npm run dev',
+      port: 5173
+    }
+  }
+];
+
+export class FrameworkDetector {
+  constructor(private logger: Logger) {}
+
+  async detect(): Promise<FrameworkConfig | null> {
+    this.logger.info('Detecting framework...');
+
+    const packageJson = await this.readPackageJson();
+    if (!packageJson) {
+      throw new Error('No package.json found - not a valid project');
+    }
+
+    const scores = await Promise.all(
+      FRAMEWORKS.map(async (framework) => ({
+        framework,
+        score: await this.scoreFramework(framework, packageJson)
+      }))
+    );
+
+    const bestMatch = scores
+      .filter(s => s.score > 0)
+      .sort((a, b) => b.score - a.score)[0];
+
+    if (!bestMatch) {
+      return null;
+    }
+
+    this.logger.success(`Detected ${bestMatch.framework.name}`);
+    return await this.enhanceFrameworkConfig(bestMatch.framework, packageJson);
+  }
+
+  private async scoreFramework(framework: FrameworkConfig, packageJson: any): Promise<number> {
+    let score = 0;
+
+    // Check config files (highest priority)
+    if (framework.detection.configFiles) {
+      for (const configFile of framework.detection.configFiles) {
+        if (await fs.pathExists(configFile)) {
+          score += 100;
+          break;
+        }
+      }
+    }
+
+    // Check dependencies
+    if (framework.detection.dependencies) {
+      const allDeps = {
+        ...packageJson.dependencies,
+        ...packageJson.devDependencies
+      };
+
+      for (const dep of framework.detection.dependencies) {
+        if (allDeps[dep]) {
+          score += 50;
+        }
+      }
+    }
+
+    return score;
+  }
+
+  private async enhanceFrameworkConfig(
+    framework: FrameworkConfig, 
+    packageJson: any
+  ): Promise<FrameworkConfig> {
+    const enhanced = { ...framework };
+    
+    // Adapt commands for detected package manager
+    const packageManager = await this.detectPackageManager();
+    enhanced.build.command = this.adaptCommand(framework.build.command, packageManager);
+    enhanced.dev.command = this.adaptCommand(framework.dev.command, packageManager);
+    
+    return enhanced;
+  }
+
+  private adaptCommand(command: string, packageManager: string): string {
+    if (command.startsWith('npm run')) {
+      const script = command.replace('npm run ', '');
+      switch (packageManager) {
+        case 'pnpm': return `pnpm run ${script}`;
+        case 'yarn': return `yarn ${script}`;
+        case 'bun': return `bun run ${script}`;
+        default: return command;
+      }
+    }
+    return command;
+  }
+
+  private async detectPackageManager(): Promise<string> {
+    if (await fs.pathExists('pnpm-lock.yaml')) return 'pnpm';
+    if (await fs.pathExists('yarn.lock')) return 'yarn';
+    if (await fs.pathExists('bun.lockb')) return 'bun';
+    return 'npm';
+  }
+
+  private async readPackageJson(): Promise<any> {
+    try {
+      return await fs.readJson('package.json');
+    } catch {
+      return null;
+    }
+  }
+}

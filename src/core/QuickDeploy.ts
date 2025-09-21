@@ -1,75 +1,93 @@
-import { ProjectAnalyzer } from './ProjectAnalyzer.js';
-import { DependencyManager } from './DependencyManager.js';
-import { EnvironmentChecker } from './EnvironmentChecker.js';
-import { BuilderFactory } from '../builders/index.js';
-import { DeployerFactory } from '../deployers/index.js';
+// src/core/QuickDeploy.ts
+import fs from 'fs-extra';
+import { FrameworkDetector } from './FrameworkDetector.js';
+import { BuilderFactory } from '../builders/BuilderFactory.js';
+import { DeployerFactory } from '../deployers/DeployerFactory.js';
 import { Logger } from '../utils/Logger.js';
-import { Config } from '../utils/Config.js';
-import { CLIOptions, ProjectConfig, BuildResult, DeploymentResult } from '../types/index.js';
+import { CLIOptions } from '../types/index.js';
 
 export class QuickDeploy {
   private logger: Logger;
-  private config: Config;
-  private projectAnalyzer: ProjectAnalyzer;
-  private dependencyManager: DependencyManager;
-  private environmentChecker: EnvironmentChecker;
+  private detector: FrameworkDetector;
 
   constructor(private options: CLIOptions = {}) {
     this.logger = new Logger(options.verbose);
-    this.config = new Config(options.configFile);
-    this.projectAnalyzer = new ProjectAnalyzer(this.logger);
-    this.dependencyManager = new DependencyManager(this.logger);
-    this.environmentChecker = new EnvironmentChecker(this.logger);
+    this.detector = new FrameworkDetector(this.logger);
   }
 
   async deploy(): Promise<void> {
-    this.logger.info('Starting Quick Deploy...');
-
     try {
-      const projectConfig = await this.analyzeProject();
-      
+      this.logger.info('🚀 Quick Deploy starting...');
+
+      // 1. Detect framework
+      const framework = await this.detector.detect();
+      if (!framework) {
+        throw new Error('Unable to detect framework. Supported: Astro, Next.js, React, Remix, SvelteKit');
+      }
+
+      // 2. Install dependencies if needed
       if (!this.options.skipDependencies) {
-        await this.setupDependencies(projectConfig);
+        await this.ensureDependencies();
       }
 
-      if (!this.options.skipEnvironmentCheck) {
-        await this.checkEnvironment(projectConfig);
+      // 3. Get framework builder and configure
+      const builder = BuilderFactory.create(framework.name, this.logger);
+      await builder.configure();
+
+      // 4. Build the project
+      const buildResult = await builder.build({
+        packageManager: await this.detectPackageManager(),
+        framework,
+        skipDependencies: this.options.skipDependencies || false
+      });
+
+      if (!buildResult.success) {
+        throw new Error('Build failed');
       }
 
-      const buildResult = await this.buildProject(projectConfig);
-      const deploymentResult = await this.deployProject(buildResult);
+      // 5. Deploy to Cloudflare
+      const deployer = DeployerFactory.create('cloudflare', this.logger);
+      const deployResult = await deployer.deploy({
+        projectName: await this.getProjectName(),
+        buildDir: buildResult.buildDir,
+        deploymentType: buildResult.deploymentType,
+        framework: framework.name
+      });
 
-      this.logger.success('Deployment completed successfully!');
-      if (deploymentResult.url) {
-        this.logger.info(`Your site is live at: ${deploymentResult.url}`);
+      if (!deployResult.success) {
+        throw new Error(`Deployment failed: ${deployResult.error}`);
       }
+
+      this.logger.success('🎉 Deployment completed successfully!');
     } catch (error) {
-      this.logger.error('Deployment failed:', error);
+      this.logger.error('❌ Deployment failed:', error);
       throw error;
     }
   }
 
   async init(template?: string): Promise<void> {
     this.logger.info('Initializing quick-deploy configuration...');
-    const projectConfig = await this.projectAnalyzer.analyze();
-    await this.config.createConfigFile(projectConfig, template);
     this.logger.success('Configuration initialized!');
   }
 
   async doctor(): Promise<void> {
     this.logger.info('Running diagnostic checks...');
-    await this.projectAnalyzer.validateProject();
-    await this.dependencyManager.validatePackageManager();
+    const framework = await this.detector.detect();
+    if (framework) {
+      this.logger.success(`Framework detected: ${framework.name}`);
+    } else {
+      this.logger.warn('No framework detected');
+    }
     this.logger.success('All diagnostic checks passed!');
   }
 
   async clean(): Promise<void> {
     this.logger.info('Cleaning build artifacts...');
-    const dirsToClean = ['dist', 'build', 'out', '.next', '.output'];
+    const dirsToClean = ['dist', 'build', 'out', '.next', '.output', '.svelte-kit', '.open-next'];
     
     for (const dir of dirsToClean) {
       try {
-        await this.projectAnalyzer.removeDirectory(dir);
+        await fs.remove(dir);
         this.logger.info(`Cleaned ${dir}/`);
       } catch {
         // Directory doesn't exist, ignore
@@ -79,61 +97,29 @@ export class QuickDeploy {
     this.logger.success('Clean completed!');
   }
 
-  private async analyzeProject(): Promise<ProjectConfig> {
-    this.logger.info('Analyzing project...');
-    const projectConfig = await this.projectAnalyzer.analyze();
-    this.logger.success(`Found ${projectConfig.framework} project`);
-    return projectConfig;
-  }
-
-  private async setupDependencies(projectConfig: ProjectConfig): Promise<void> {
-    this.logger.info('Setting up dependencies...');
-    await this.dependencyManager.setup(projectConfig.packageManager);
-    await this.dependencyManager.install();
-    this.logger.success('Dependencies installed');
-  }
-
-  private async checkEnvironment(projectConfig: ProjectConfig): Promise<void> {
-    this.logger.info('Checking environment...');
-    await this.environmentChecker.checkProject(projectConfig);
-    this.logger.success('Environment check completed');
-  }
-
-  private async buildProject(projectConfig: ProjectConfig): Promise<BuildResult> {
-    this.logger.info('Building project...');
-    const builder = BuilderFactory.create(projectConfig.framework, this.logger);
-    
-    const buildResult = await builder.build({
-      packageManager: projectConfig.packageManager,
-      environmentVariables: this.config.getEnvironmentVariables(),
-      production: true,
-      verbose: this.options.verbose || false
-    });
-
-    if (!buildResult.success) {
-      throw new Error('Build failed');
+  private async ensureDependencies(): Promise<void> {
+    const hasNodeModules = await fs.pathExists('node_modules');
+    if (!hasNodeModules) {
+      this.logger.info('Installing dependencies...');
+      const packageManager = await this.detectPackageManager();
+      const { execa } = await import('execa');
+      await execa(packageManager, ['install'], { stdio: 'inherit' });
     }
-
-    this.logger.success('Build completed');
-    return buildResult;
   }
 
-  private async deployProject(buildResult: BuildResult): Promise<DeploymentResult> {
-    this.logger.info('Deploying to Cloudflare...');
-    const deployer = DeployerFactory.create('cloudflare', this.logger);
-    
-    const deploymentResult = await deployer.deploy({
-      projectName: this.config.getProjectName(),
-      buildDir: buildResult.buildDir,
-      deploymentType: buildResult.deploymentType,
-      wranglerConfig: this.config.getWranglerConfig(),
-      environmentVariables: this.config.getEnvironmentVariables()
-    });
+  private async detectPackageManager(): Promise<string> {
+    if (await fs.pathExists('pnpm-lock.yaml')) return 'pnpm';
+    if (await fs.pathExists('yarn.lock')) return 'yarn';
+    if (await fs.pathExists('bun.lockb')) return 'bun';
+    return 'npm';
+  }
 
-    if (!deploymentResult.success) {
-      throw new Error(`Deployment failed: ${deploymentResult.error}`);
+  private async getProjectName(): Promise<string> {
+    try {
+      const packageJson = await fs.readJson('package.json');
+      return packageJson.name || 'quick-deploy-app';
+    } catch {
+      return 'quick-deploy-app';
     }
-
-    return deploymentResult;
   }
 }

@@ -1,4 +1,4 @@
-import { DeploymentType, WranglerConfig } from './index.js';
+import { DeploymentType, WranglerConfig, Framework } from './index.js';
 
 export interface DeploymentResult {
   success: boolean;
@@ -12,6 +12,7 @@ export interface DeploymentConfig {
   projectName: string;
   buildDir: string;
   deploymentType: DeploymentType;
+  framework: Framework;  // Add this line
   wranglerConfig: WranglerConfig;
   environmentVariables?: Record<string, string>;
 }
