@@ -1,271 +1,259 @@
-# Quick Deploy v2.0
+# Quick Deploy
 
-**One-command deployment for modern web frameworks to Cloudflare Workers**
-
-## What it does
-
-Quick Deploy automatically detects your web framework, configures it for deployment, and deploys it to Cloudflare with a single command. No configuration files, no complex setup - just `quick-deploy` and you're live.
-
-### Key Features
-
-- **🎯 Universal Framework Support** - Detects and deploys Next.js, Astro, Vite, Nuxt, SvelteKit, and Remix projects
-- **🧠 Intelligent Configuration** - Automatically configures Next.js for static export or prompts for SSR options
-- **📦 Package Manager Agnostic** - Works seamlessly with npm, pnpm, yarn, and bun
-- **⚡ Zero Config Deployment** - Generates optimal wrangler.jsonc configurations automatically
-- **🌱 Environment Detection** - Scans for missing environment variables and creates templates
-- **🔧 Interactive Experience** - Prompts for deployment choices when needed (static vs SSR)
-- **📱 Account Selection** - Interactive Cloudflare account selection (no hardcoded accounts)
-
-## Quick Start
-
-### Installation
+One-command deployment for web frameworks to Cloudflare Workers.
 
 ```bash
-# Install globally
-npm install -g quick-deploy@latest
+cd your-project
+quick-deploy
+```
 
-# Or install from source
-git clone https://github.com/yourusername/quick-deploy.git
+## 🚀 Supported Frameworks
+
+| Framework | Status | Deployment Type | Notes |
+|-----------|--------|----------------|-------|
+| **Next.js** | ✅ Working | SSR | Uses OpenNext adapter, handles Turbopack issues |
+| **Astro** | ✅ Working | SSR/Static | Uses @astrojs/cloudflare adapter |
+| **SvelteKit** | ✅ Working | SSR | Uses @sveltejs/adapter-cloudflare |
+| **React + Vite** | ✅ Working | Static SPA | Uses @cloudflare/vite-plugin |
+| **React Router v7** | ⚠️ Partial | SSR | Requires Cloudflare template (see below) |
+
+## 📦 Installation
+
+### Quick Install (Recommended)
+```bash
+curl -fsSL https://raw.githubusercontent.com/username/quick-deploy/main/install.sh | bash
+```
+
+### NPM Install
+```bash
+npm install -g quick-deploy@latest
+```
+
+### From Source
+```bash
+git clone https://github.com/username/quick-deploy.git
 cd quick-deploy
 npm install
 npm run build
 npm link
 ```
 
-### Usage
+## 🎯 Usage
 
+### Basic Deployment
 ```bash
-# Navigate to any web project
-cd my-awesome-app
+# Navigate to your project
+cd my-nextjs-app
 
 # Deploy with one command
 quick-deploy
 ```
 
-That's it! Quick Deploy will:
-1. Detect your framework and package manager
-2. Install dependencies if needed
-3. Check for environment variables
-4. Configure your project for optimal deployment
-5. Generate the proper wrangler.jsonc configuration
-6. Deploy to Cloudflare with interactive account selection
-
-## Supported Frameworks
-
-| Framework | Static | SSR | Configuration |
-|-----------|--------|-----|---------------|
-| **Next.js** | ✅ | ✅ (OpenNext) | Auto-configures static export, prompts for SSR |
-| **Astro** | ✅ | ✅ | Detects build output automatically |
-| **Vite** | ✅ | ➖ | Static sites and SPAs |
-| **Nuxt** | ✅ | ✅ | Static generation and SSR |
-| **SvelteKit** | ✅ | ✅ | Adapter detection |
-| **Remix** | ✅ | ✅ | Build output detection |
-
-## Examples
-
-### Next.js Project
+### Available Commands
 ```bash
-cd my-nextjs-app
-quick-deploy
-
-# Quick Deploy will:
-# - Detect it's a Next.js project
-# - Ask if you want static export or SSR
-# - Configure next.config.ts automatically
-# - Deploy to Cloudflare
+quick-deploy                 # Deploy current project
+quick-deploy init           # Initialize configuration  
+quick-deploy doctor         # Run diagnostic checks
+quick-deploy clean          # Clean build artifacts
+quick-deploy --help         # Show all options
 ```
 
-### Astro Project
+### Command Options
 ```bash
+quick-deploy [options]
+
+Options:
+  -v, --verbose              Enable verbose logging
+  -f, --force               Force deployment even if checks fail
+  --skip-deps               Skip dependency installation
+  --skip-env                Skip environment variable checks
+  -o, --output-dir <dir>    Specify custom output directory
+  -c, --config <file>       Use custom configuration file
+  --help                    Show help
+  --version                 Show version
+```
+
+## 🔧 Framework-Specific Setup
+
+### Next.js
+```bash
+# Create Next.js project
+npx create-next-app@latest my-app --typescript --eslint --tailwind --src-dir --app --import-alias "@/*"
+cd my-app
+quick-deploy
+```
+
+**Features:**
+- ✅ Automatic Turbopack detection and fix
+- ✅ OpenNext adapter installation and configuration
+- ✅ Proper wrangler.jsonc generation
+- ✅ TypeScript support
+
+### Astro
+```bash
+# Create Astro project
+npm create astro@latest my-astro-site -- --template minimal --typescript strict
 cd my-astro-site
+npm install
 quick-deploy
-
-# Quick Deploy will:
-# - Detect Astro framework
-# - Check for environment variables
-# - Build and deploy to Cloudflare
 ```
 
-### Any Framework
+**Features:**
+- ✅ Interactive adapter installation via `astro add cloudflare`
+- ✅ Automatic SSR/Static/Hybrid detection
+- ✅ Proper asset handling with .assetsignore
+
+### SvelteKit
 ```bash
-cd any-web-project
+# Create SvelteKit project
+npx sv create my-svelte-app
+cd my-svelte-app
+# Choose: SvelteKit minimal, TypeScript syntax, no additional features, npm
 quick-deploy
-
-# Works with any framework!
-# Intelligent detection and configuration
 ```
 
-## Commands
+**Features:**
+- ✅ Cloudflare adapter installation and configuration
+- ✅ TypeScript definitions update
+- ✅ Automatic config file updates
 
+### React + Vite
 ```bash
-# Deploy (default command)
+# Create React + Vite project
+npm create vite@latest my-react-app -- --template react-ts
+cd my-react-app
+npm install
 quick-deploy
-
-# Initialize configuration
-quick-deploy init
-
-# Run diagnostic checks
-quick-deploy doctor
-
-# Clean build artifacts
-quick-deploy clean
-
-# Show help
-quick-deploy --help
-
-# Verbose output
-quick-deploy --verbose
 ```
 
-## Configuration
+**Features:**
+- ✅ Cloudflare Vite plugin installation
+- ✅ Worker file generation with proper TypeScript types
+- ✅ SPA routing configuration
 
-Quick Deploy works without configuration, but you can customize behavior:
-
-### Generated Files
-
-- `wrangler.jsonc` - Generated automatically based on your project
-- `.env.example` - Created when environment variables are detected
-- `quick-deploy.config.json` - Optional configuration file
-
-### Environment Variables
-
-Quick Deploy automatically scans your project for environment variables and helps you set them up:
-
+### React Router v7 (New Remix)
 ```bash
-# If variables are detected, you'll see:
-⚠️  Missing environment variables:
-  - API_KEY
-  - DATABASE_URL
-
-ℹ️  Created .env.example with variable templates
+# IMPORTANT: Must use Cloudflare template
+npx create-react-router@latest my-app --template https://github.com/remix-run/react-router-templates/tree/main/cloudflare
+cd my-app
+npm install
+quick-deploy
 ```
 
-## Next.js Special Features
+**Important:** React Router v7 requires the Cloudflare-specific template. Generic templates won't work on Cloudflare Workers.
 
-### Automatic Static Export Configuration
+## 🔍 How It Works
 
-For Next.js projects, Quick Deploy can automatically configure static export:
+1. **Framework Detection**: Analyzes your project to identify the framework
+2. **Dependency Management**: Installs required Cloudflare adapters
+3. **Configuration**: Creates/updates config files for Cloudflare deployment
+4. **Build**: Runs the appropriate build command for your framework
+5. **Deploy**: Uses Wrangler to deploy to Cloudflare Workers
 
-```typescript
-// Automatically generates this in next.config.ts
-const nextConfig: NextConfig = {
-  output: 'export',
-  trailingSlash: true,
-  images: {
-    unoptimized: true
-  }
-};
-```
-
-### SSR with OpenNext
-
-Quick Deploy supports Next.js SSR through OpenNext integration:
-
-```bash
-Deployment options for Next.js:
-  1. Configure for static export (recommended - simpler)
-  2. Use OpenNext for SSR deployment
-  3. Exit and configure manually
-
-Choose option (1/2/3): 
-```
-
-## Architecture
-
-Quick Deploy v2.0 features a modular TypeScript architecture:
+## 🏗️ Architecture
 
 ```
 src/
-├── core/              # Main application logic
-├── builders/          # Framework-specific build logic
-├── deployers/         # Deployment strategies
-├── utils/            # Shared utilities
-└── types/            # TypeScript type definitions
+├── builders/           # Framework-specific build logic
+│   ├── NextJSBuilder.ts
+│   ├── AstroBuilder.ts  
+│   ├── ReactBuilder.ts
+│   ├── SvelteBuilder.ts
+│   └── BaseBuilder.ts
+├── deployers/          # Deployment handlers
+│   ├── CloudflareDeployer.ts
+│   └── BaseDeployer.ts
+├── core/               # Core functionality
+│   ├── QuickDeploy.ts
+│   └── FrameworkDetector.ts
+└── utils/              # Utilities
+    ├── Logger.ts
+    ├── Process.ts
+    └── FileSystem.ts
 ```
 
-### Key Components
+## ⚙️ Configuration
 
-- **ProjectAnalyzer** - Detects frameworks, package managers, and project structure
-- **Framework Builders** - Handle framework-specific build processes
-- **CloudflareDeployer** - Manages Cloudflare Workers/Pages deployment
-- **Environment Checker** - Validates environment and dependencies
+Quick Deploy works out of the box, but you can customize behavior:
 
-## Development
-
+### Environment Variables
 ```bash
-# Clone and setup
-git clone https://github.com/yourusername/quick-deploy.git
-cd quick-deploy
-npm install
-
-# Development workflow
-npm run dev          # Watch mode
-npm run build        # Build TypeScript
-npm run test         # Run tests
-npm run lint         # Lint code
-npm link            # Link for local testing
-
-# Test on projects
-cd ../my-test-project
-quick-deploy
+# Optional: For package resolution issues
+WRANGLER_BUILD_CONDITIONS=""
+WRANGLER_BUILD_PLATFORM="node"
 ```
 
-## Troubleshooting
+### Custom Configuration
+```bash
+# Create custom config
+quick-deploy init
+
+# Use custom config file
+quick-deploy -c my-config.json
+```
+
+## 🐛 Troubleshooting
 
 ### Common Issues
 
-**Framework not detected:**
+**Next.js Turbopack Error**
+```
+Error: handler32 is not a function
+```
+**Solution:** Quick Deploy automatically detects and fixes Turbopack issues by updating your build script.
+
+**Package Resolution Errors**
+```
+Could not resolve package X
+```
+**Solution:** Quick Deploy can create environment variables to fix package resolution:
 ```bash
-# Make sure you're in the project root
-ls package.json  # Should exist
-quick-deploy doctor  # Run diagnostics
+WRANGLER_BUILD_CONDITIONS=""
+WRANGLER_BUILD_PLATFORM="node"
 ```
 
-**Build failures:**
-```bash
-# Check environment variables
-quick-deploy --verbose  # See detailed logs
-# Look for missing .env variables in output
+**TypeScript Errors in Worker Files**
 ```
-
-**Deployment issues:**
-```bash
-# Check Cloudflare authentication
-wrangler whoami
-# Re-authenticate if needed
-wrangler login
+Cannot find name 'Request'
 ```
+**Solution:** Quick Deploy automatically installs `@cloudflare/workers-types` and configures proper TypeScript support.
 
 ### Debug Mode
-
 ```bash
-# Enable verbose logging
 quick-deploy --verbose
-
-# Check generated configuration
-cat wrangler.jsonc
 ```
 
-## Migration from v1.x
+### Clean Build Artifacts
+```bash
+quick-deploy clean
+```
 
-The bash version is preserved in `legacy-bash/` directory. Key improvements in v2.0:
+### Check Project Compatibility
+```bash
+quick-deploy doctor
+```
 
-- **Type Safety** - Full TypeScript with strict typing
-- **Better Error Handling** - Detailed error messages and recovery suggestions
-- **Interactive Configuration** - Smart prompts for deployment options
-- **Modular Architecture** - Easy to extend and maintain
-- **Enhanced Framework Support** - Better detection and configuration
+## 📊 Framework Support Matrix
 
-## Contributing
+| Feature | Next.js | Astro | SvelteKit | React+Vite | React Router |
+|---------|---------|-------|-----------|------------|-------------|
+| SSR | ✅ | ✅ | ✅ | ❌ | ✅ |
+| Static Sites | ❌ | ✅ | ❌ | ✅ | ❌ |
+| API Routes | ✅ | ✅ | ✅ | ✅ | ✅ |
+| TypeScript | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Auto Config | ✅ | ✅ | ✅ | ✅ | ⚠️ |
 
-We welcome contributions! Quick Deploy is built with:
+### Development Setup
+```bash
+git clone https://github.com/username/quick-deploy.git
+cd quick-deploy
+npm install
+npm run build
+npm link
 
-- **TypeScript** for type safety
-- **Commander.js** for CLI interface
-- **Chalk** for colored output
-- **Execa** for process execution
-- **Inquirer** for interactive prompts
+# Test your changes
+cd test-project
+quick-deploy
+```
 
-See the development section above for setup instructions.
-
-**Happy deploying!** 🚀
+**Quick Deploy** - Deploy modern web frameworks to Cloudflare with zero configuration.
