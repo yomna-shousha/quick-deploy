@@ -3,6 +3,7 @@ import { BaseBuilder } from './BaseBuilder.js';
 import { AstroBuilder } from './AstroBuilder.js';
 import { NextJSBuilder } from './NextJSBuilder.js';
 import { ReactBuilder } from './ReactBuilder.js';
+import { ReactRouterBuilder } from './ReactRouterBuilder.js';
 import { RemixBuilder } from './RemixBuilder.js';
 import { SvelteBuilder } from './SvelteBuilder.js';
 import { Logger } from '../utils/Logger.js';
@@ -17,6 +18,8 @@ export class BuilderFactory {
       case 'react':
       case 'vite':
         return new ReactBuilder(logger);
+      case 'react-router':
+        return new ReactRouterBuilder(logger);
       case 'remix':
         return new RemixBuilder(logger);
       case 'svelte':

@@ -83,6 +83,25 @@ const FRAMEWORKS: FrameworkConfig[] = [
     }
   },
   {
+    name: 'react-router',
+    detection: {
+      configFiles: ['react-router.config.ts', 'react-router.config.js'],
+      dependencies: ['react-router', '@react-router/dev']
+    },
+    build: {
+      command: 'npm run build',
+      outputDir: 'build'
+    },
+    deploy: {
+      type: 'ssr',
+      compatibility_flags: ['nodejs_compat']
+    },
+    dev: {
+      command: 'npm run dev',
+      port: 3000
+    }
+  },
+  {
     name: 'remix',
     detection: {
       configFiles: ['remix.config.js'],
@@ -154,17 +173,7 @@ export class FrameworkDetector {
   private async scoreFramework(framework: FrameworkConfig, packageJson: any): Promise<number> {
     let score = 0;
 
-    // Check config files (highest priority)
-    if (framework.detection.configFiles) {
-      for (const configFile of framework.detection.configFiles) {
-        if (await fs.pathExists(configFile)) {
-          score += 100;
-          break;
-        }
-      }
-    }
-
-    // Check dependencies
+    // Check dependencies first (higher priority for specific frameworks)
     if (framework.detection.dependencies) {
       const allDeps = {
         ...packageJson.dependencies,
@@ -173,7 +182,42 @@ export class FrameworkDetector {
 
       for (const dep of framework.detection.dependencies) {
         if (allDeps[dep]) {
-          score += 50;
+          // Give React Router v7 higher priority over generic React
+          if (framework.name === 'react-router' && (dep === 'react-router' || dep === '@react-router/dev')) {
+            score += 200; // Highest priority
+          } 
+          // Give Next.js high priority
+          else if (framework.name === 'nextjs' && dep === 'next') {
+            score += 150;
+          }
+          // Give Astro high priority
+          else if (framework.name === 'astro' && dep === 'astro') {
+            score += 150;
+          }
+          // Give SvelteKit high priority  
+          else if (framework.name === 'svelte' && dep === '@sveltejs/kit') {
+            score += 150;
+          }
+          // Classic Remix gets medium priority
+          else if (framework.name === 'remix') {
+            score += 100;
+          }
+          // Generic React + Vite gets lower priority
+          else if (framework.name === 'react') {
+            score += 50;
+          } else {
+            score += 75;
+          }
+        }
+      }
+    }
+
+    // Check config files (medium priority)
+    if (framework.detection.configFiles) {
+      for (const configFile of framework.detection.configFiles) {
+        if (await fs.pathExists(configFile)) {
+          score += 100;
+          break;
         }
       }
     }
