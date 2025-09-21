@@ -22,7 +22,7 @@ export class QuickDeploy {
       // 1. Detect framework
       const framework = await this.detector.detect();
       if (!framework) {
-        throw new Error('Unable to detect framework. Supported: Astro, Next.js, React, Remix, SvelteKit');
+        throw new Error('Unable to detect framework. Supported: Angular, Astro, Next.js, Nuxt, React, React Router, Remix, SvelteKit');
       }
 
       // 2. Install dependencies if needed

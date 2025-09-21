@@ -23,9 +23,15 @@ export class CloudflareDeployer extends BaseDeployer {
 
   private async createWranglerConfig(config: DeployConfig): Promise<void> {
     // For frameworks that might auto-generate configs, always override to ensure consistency
-    const shouldOverride = ['nextjs', 'astro'].includes(config.framework);
+    const shouldOverride = ['nextjs', 'astro', 'nuxt', 'angular'].includes(config.framework);
     
-    if (!shouldOverride && (await fs.pathExists('wrangler.toml') || await fs.pathExists('wrangler.jsonc'))) {
+    // Never override for SvelteKit - it creates its own worker during build
+    if (config.framework === 'svelte') {
+      this.logger.info('Using SvelteKit-generated wrangler configuration');
+      return;
+    }
+    
+    if (!shouldOverride && await fs.pathExists('wrangler.jsonc')) {
       this.logger.info('Using existing wrangler configuration');
       return;
     }
@@ -43,6 +49,10 @@ export class CloudflareDeployer extends BaseDeployer {
     };
 
     switch (config.framework) {
+      case 'angular':
+        return this.getAngularConfig(baseConfig, config);
+      case 'nuxt':
+        return this.getNuxtConfig(baseConfig, config);
       case 'astro':
         return this.getAstroConfig(baseConfig, config);
       case 'nextjs':
@@ -51,11 +61,36 @@ export class CloudflareDeployer extends BaseDeployer {
         return this.getReactConfig(baseConfig, config);
       case 'remix':
         return this.getRemixConfig(baseConfig, config);
+      case 'react-router':
+        return this.getReactRouterConfig(baseConfig, config);
       case 'svelte':
         return this.getSvelteConfig(baseConfig, config);
       default:
         return this.getDefaultConfig(baseConfig, config);
     }
+  }
+
+  private getAngularConfig(base: any, config: DeployConfig): any {
+    return {
+      ...base,
+      main: './dist/server/server.mjs',
+      compatibility_flags: ['nodejs_compat'],
+      assets: {
+        binding: 'ASSETS',
+        directory: './dist/browser'
+      }
+    };
+  }
+
+  private getNuxtConfig(base: any, config: DeployConfig): any {
+    return {
+      ...base,
+      main: './.output/server/index.mjs',
+      assets: {
+        binding: 'ASSETS',
+        directory: './.output/public/'
+      }
+    };
   }
 
   private getAstroConfig(base: any, config: DeployConfig): any {
@@ -103,6 +138,18 @@ export class CloudflareDeployer extends BaseDeployer {
     };
   }
 
+  private getReactRouterConfig(base: any, config: DeployConfig): any {
+    return {
+      ...base,
+      main: './build/server/index.js',
+      compatibility_flags: ['nodejs_compat'],
+      assets: {
+        binding: 'ASSETS',
+        directory: './build/client'
+      }
+    };
+  }
+
   private getRemixConfig(base: any, config: DeployConfig): any {
     // Create .assetsignore for Remix
     this.createAssetsIgnore('build/client');
@@ -110,14 +157,14 @@ export class CloudflareDeployer extends BaseDeployer {
     return {
       ...base,
       main: './server.ts',
+      compatibility_flags: ['nodejs_compat'],
       assets: { directory: './build/client' }
     };
   }
 
   private getSvelteConfig(base: any, config: DeployConfig): any {
-    // Create .assetsignore for SvelteKit like C3 does
-    this.createAssetsIgnore('.svelte-kit/cloudflare');
-    
+    // SvelteKit creates its own wrangler config during build
+    // This method shouldn't be called, but return basic config just in case
     return {
       ...base,
       main: '.svelte-kit/cloudflare/_worker.js',

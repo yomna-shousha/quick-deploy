@@ -1,6 +1,6 @@
 # Quick Deploy
 
-One-command deployment for web frameworks to Cloudflare Workers.
+One-command deployment for modern web frameworks to Cloudflare Workers.
 
 ```bash
 cd your-project
@@ -15,7 +15,10 @@ quick-deploy
 | **Astro** | ✅ Working | SSR/Static | Uses @astrojs/cloudflare adapter |
 | **SvelteKit** | ✅ Working | SSR | Uses @sveltejs/adapter-cloudflare |
 | **React + Vite** | ✅ Working | Static SPA | Uses @cloudflare/vite-plugin |
-| **React Router v7** | ⚠️ Partial | SSR | Requires Cloudflare template (see below) |
+| **Nuxt** | ✅ Working | SSR | Uses nitro-cloudflare-dev adapter |
+| **Angular** | ❌ Not Working | - | Node.js compatibility issues with SSR |
+| **React Router v7** | ❌ Not Working | - | Complex SSR setup incompatible with Workers |
+| **Remix** | ⚠️ Legacy Only | SSR | New project creations use React Router v7 |
 
 ## 📦 Installation
 
@@ -131,16 +134,36 @@ quick-deploy
 - ✅ Worker file generation with proper TypeScript types
 - ✅ SPA routing configuration
 
-### React Router v7 (New Remix)
+### Nuxt
 ```bash
-# IMPORTANT: Must use Cloudflare template
-npx create-react-router@latest my-app --template https://github.com/remix-run/react-router-templates/tree/main/cloudflare
-cd my-app
+# Create Nuxt project
+npx nuxi@latest init my-nuxt-app
+cd my-nuxt-app
 npm install
 quick-deploy
 ```
 
-**Important:** React Router v7 requires the Cloudflare-specific template. Generic templates won't work on Cloudflare Workers.
+**Features:**
+- ✅ Nitro Cloudflare adapter installation
+- ✅ Automatic config updates for Cloudflare deployment
+- ✅ TypeScript definitions for Cloudflare context
+
+### Remix (Legacy Projects Only)
+```bash
+# For existing Remix projects
+cd my-existing-remix-app
+quick-deploy
+```
+
+**Note:** Remix v2 is in maintenance mode. New projects should use React Router v7, though React Router v7 is not currently supported by quick-deploy due to complex SSR requirements.
+
+## ❌ Unsupported Frameworks
+
+### Angular
+Angular SSR has fundamental Node.js compatibility issues with Cloudflare Workers that prevent successful deployment. The Angular build process attempts to bundle Node.js-specific modules (fs, path, http, etc.) for browser use, which is incompatible with the Workers runtime.
+
+### React Router v7
+React Router v7's SSR implementation requires complex server-side setup that doesn't align well with Cloudflare Workers' execution model. While the framework builds successfully, proper SSR hydration on Workers requires significant additional configuration.
 
 ## 🔍 How It Works
 
@@ -159,18 +182,24 @@ src/
 │   ├── AstroBuilder.ts  
 │   ├── ReactBuilder.ts
 │   ├── SvelteBuilder.ts
+│   ├── NuxtBuilder.ts
+│   ├── AngularBuilder.ts (not functional)
+│   ├── ReactRouterBuilder.ts (not functional)
 │   └── BaseBuilder.ts
 ├── deployers/          # Deployment handlers
 │   ├── CloudflareDeployer.ts
 │   └── BaseDeployer.ts
 ├── core/               # Core functionality
 │   ├── QuickDeploy.ts
-│   └── FrameworkDetector.ts
+│   ├── FrameworkDetector.ts
+│   └── EnvironmentChecker.ts (not currently used)
 └── utils/              # Utilities
     ├── Logger.ts
     ├── Process.ts
     └── FileSystem.ts
 ```
+
+**Note:** The `EnvironmentChecker.ts` module is implemented but not currently integrated into the deployment flow. It provides environment variable detection and build-safe placeholder generation for projects that require environment variables during build time.
 
 ## ⚙️ Configuration
 
@@ -206,7 +235,7 @@ Error: handler32 is not a function
 ```
 Could not resolve package X
 ```
-**Solution:** Quick Deploy can create environment variables to fix package resolution:
+**Solution:** Try setting environment variables to fix package resolution:
 ```bash
 WRANGLER_BUILD_CONDITIONS=""
 WRANGLER_BUILD_PLATFORM="node"
@@ -235,13 +264,15 @@ quick-deploy doctor
 
 ## 📊 Framework Support Matrix
 
-| Feature | Next.js | Astro | SvelteKit | React+Vite | React Router |
-|---------|---------|-------|-----------|------------|-------------|
-| SSR | ✅ | ✅ | ✅ | ❌ | ✅ |
-| Static Sites | ❌ | ✅ | ❌ | ✅ | ❌ |
-| API Routes | ✅ | ✅ | ✅ | ✅ | ✅ |
-| TypeScript | ✅ | ✅ | ✅ | ✅ | ✅ |
-| Auto Config | ✅ | ✅ | ✅ | ✅ | ⚠️ |
+| Feature | Next.js | Astro | SvelteKit | React+Vite | Nuxt | Angular | React Router |
+|---------|---------|-------|-----------|------------|------|---------|-------------|
+| SSR | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
+| Static Sites | ❌ | ✅ | ❌ | ✅ | ❌ | N/A | N/A |
+| API Routes | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A |
+| TypeScript | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A |
+| Auto Config | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+
+## 🚀 Development
 
 ### Development Setup
 ```bash
@@ -256,4 +287,21 @@ cd test-project
 quick-deploy
 ```
 
-**Quick Deploy** - Deploy modern web frameworks to Cloudflare with zero configuration.
+### Testing Framework Support
+```bash
+# Test each supported framework
+npm create astro@latest test-astro
+npx create-next-app@latest test-nextjs
+npx nuxi@latest init test-nuxt
+npx sv create test-svelte
+npm create vite@latest test-react -- --template react-ts
+
+# Deploy each
+cd test-astro && quick-deploy
+cd ../test-nextjs && quick-deploy
+cd ../test-nuxt && quick-deploy
+cd ../test-svelte && quick-deploy
+cd ../test-react && quick-deploy
+```
+
+**Quick Deploy** - Deploy modern web frameworks to Cloudflare Workers with zero configuration.

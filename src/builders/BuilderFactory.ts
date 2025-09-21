@@ -6,6 +6,8 @@ import { ReactBuilder } from './ReactBuilder.js';
 import { ReactRouterBuilder } from './ReactRouterBuilder.js';
 import { RemixBuilder } from './RemixBuilder.js';
 import { SvelteBuilder } from './SvelteBuilder.js';
+import { NuxtBuilder } from './NuxtBuilder.js';
+import { AngularBuilder } from './AngularBuilder.js';
 import { Logger } from '../utils/Logger.js';
 
 export class BuilderFactory {
@@ -24,6 +26,10 @@ export class BuilderFactory {
         return new RemixBuilder(logger);
       case 'svelte':
         return new SvelteBuilder(logger);
+      case 'nuxt':
+        return new NuxtBuilder(logger);
+      case 'angular':
+        return new AngularBuilder(logger);
       default:
         throw new Error(`Unsupported framework: ${framework}`);
     }

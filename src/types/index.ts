@@ -2,9 +2,12 @@ export type Framework =
   | 'nextjs' 
   | 'astro' 
   | 'vite' 
-  | 'nuxt' 
+  | 'nuxt'
+  | 'angular'
   | 'svelte' 
-  | 'remix' 
+  | 'remix'
+  | 'react'
+  | 'react-router'
   | 'unknown';
 
 export type PackageManager = 

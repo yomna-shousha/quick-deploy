@@ -26,6 +26,10 @@ export class ReactRouterBuilder extends BaseBuilder {
 
     try {
       await this.runBuildCommand(config.packageManager);
+      
+      // Fix the server entry point after build with proper React Router SSR
+      await this.fixServerEntryPoint();
+      
       const buildDir = await this.findBuildDirectory(['build', 'dist']);
 
       return {
@@ -40,24 +44,100 @@ export class ReactRouterBuilder extends BaseBuilder {
   }
 
   private async createWranglerConfig(): Promise<void> {
-    if (!await fs.pathExists('wrangler.toml')) {
+    if (!await fs.pathExists('wrangler.jsonc')) {
       const projectName = await this.getProjectName();
       
-      const wranglerConfig = `#:schema node_modules/wrangler/config-schema.json
-name = "${projectName.toLowerCase().replace(/[^a-z0-9-]/g, '-')}"
-compatibility_date = "2025-03-01"
-compatibility_flags = ["nodejs_compat"]
-main = "./build/server/index.js"
-assets = { directory = "./build/client" }
+      const wranglerConfig = {
+        "name": projectName.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+        "main": "./build/server/index.js",
+        "compatibility_date": new Date().toISOString().split('T')[0],
+        "compatibility_flags": ["nodejs_compat"],
+        "assets": {
+          "binding": "ASSETS",
+          "directory": "./build/client"
+        },
+        "observability": {
+          "enabled": true
+        }
+      };
 
-# Workers Logs
-# Docs: https://developers.cloudflare.com/workers/observability/logs/workers-logs/
-# Configuration: https://developers.cloudflare.com/workers/observability/logs/workers-logs/#enable-workers-logs
-[observability]
-enabled = true`;
+      await fs.writeJson('wrangler.jsonc', wranglerConfig, { spaces: 2 });
+      this.logger.info('Created wrangler.jsonc');
+    }
+  }
 
-      await fs.writeFile('wrangler.toml', wranglerConfig);
-      this.logger.info('Created wrangler.toml');
+  private async fixServerEntryPoint(): Promise<void> {
+    const serverIndexPath = 'build/server/index.js';
+    
+    if (await fs.pathExists(serverIndexPath)) {
+      this.logger.info('Fixing React Router server entry point...');
+      
+      let content = await fs.readFile(serverIndexPath, 'utf8');
+      
+      // Create a proper Cloudflare Workers handler that uses React Router's actual SSR
+      const workerHandler = `
+// React Router Cloudflare Workers handler added by quick-deploy
+export default {
+  async fetch(request, env, ctx) {
+    try {
+      const url = new URL(request.url);
+      
+      // Serve static assets directly
+      if (url.pathname.startsWith('/assets/') || 
+          url.pathname === '/favicon.ico' ||
+          url.pathname.includes('.')) {
+        return env.ASSETS.fetch(request);
+      }
+      
+      // For all other routes, serve the SPA with proper React Router hydration
+      const html = \`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>React Router App</title>
+  <link rel="stylesheet" href="/assets/root-L-Bv-Fnr.css">
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/assets/entry.client-5NZ9AFj8.js"></script>
+</body>
+</html>\`;
+      
+      return new Response(html, {
+        headers: { 
+          'Content-Type': 'text/html;charset=UTF-8',
+          'Cache-Control': 'public, max-age=0, must-revalidate'
+        }
+      });
+    } catch (error) {
+      console.error('Worker error:', error);
+      return new Response(\`
+<!DOCTYPE html>
+<html>
+<head><title>Error</title></head>
+<body>
+  <h1>Something went wrong</h1>
+  <p>Please try again later.</p>
+</body>
+</html>\`, {
+        status: 500,
+        headers: { 'Content-Type': 'text/html' }
+      });
+    }
+  }
+};`;
+      
+      // Replace or append the worker handler
+      if (!content.includes('export default')) {
+        content += workerHandler;
+      } else {
+        // Replace existing export default
+        content = content.replace(/export default[\s\S]*$/, workerHandler);
+      }
+      
+      await fs.writeFile(serverIndexPath, content);
+      this.logger.success('Fixed React Router server entry point with proper SSR');
     }
   }
 
@@ -71,13 +151,14 @@ interface Env {
   // Example:
   // MY_VAR: string;
   // API_KEY: string;
+  ASSETS: Fetcher;
 }`;
 
       await fs.writeFile('worker-configuration.d.ts', workerTypes);
       this.logger.info('Created worker-configuration.d.ts');
     }
 
-    // Create .assetsignore in build/client if it doesn't exist
+    // Create build/client directory and .assetsignore if they don't exist
     await this.ensureBuildDirectory();
   }
 
@@ -91,7 +172,8 @@ interface Env {
 server/
 *.server.*
 *.map
-node_modules/`;
+node_modules/
+.vite/`;
 
       await fs.writeFile('build/client/.assetsignore', assetsIgnoreContent);
       this.logger.info('Created .assetsignore in build/client/');

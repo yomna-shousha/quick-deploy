@@ -25,6 +25,44 @@ interface FrameworkConfig {
 
 const FRAMEWORKS: FrameworkConfig[] = [
   {
+    name: 'angular',
+    detection: {
+      configFiles: ['angular.json'],
+      dependencies: ['@angular/core', '@angular/cli']
+    },
+    build: {
+      command: 'npm run build',
+      outputDir: 'dist'
+    },
+    deploy: {
+      type: 'ssr',
+      compatibility_flags: ['nodejs_compat']
+    },
+    dev: {
+      command: 'npm run dev',
+      port: 4200
+    }
+  },
+  {
+    name: 'nuxt',
+    detection: {
+      configFiles: ['nuxt.config.ts', 'nuxt.config.js'],
+      dependencies: ['nuxt', '@nuxt/kit']
+    },
+    build: {
+      command: 'npm run build',
+      outputDir: '.output'
+    },
+    deploy: {
+      type: 'ssr',
+      compatibility_flags: ['nodejs_compat']
+    },
+    dev: {
+      command: 'npm run dev',
+      port: 3000
+    }
+  },
+  {
     name: 'nextjs',
     detection: {
       configFiles: ['next.config.js', 'next.config.mjs', 'next.config.ts'],
@@ -182,8 +220,16 @@ export class FrameworkDetector {
 
       for (const dep of framework.detection.dependencies) {
         if (allDeps[dep]) {
+          // Give Angular highest priority when detected
+          if (framework.name === 'angular' && (dep === '@angular/core' || dep === '@angular/cli')) {
+            score += 200;
+          }
+          // Give Nuxt high priority
+          else if (framework.name === 'nuxt' && dep === 'nuxt') {
+            score += 180;
+          }
           // Give React Router v7 higher priority over generic React
-          if (framework.name === 'react-router' && (dep === 'react-router' || dep === '@react-router/dev')) {
+          else if (framework.name === 'react-router' && (dep === 'react-router' || dep === '@react-router/dev')) {
             score += 200; // Highest priority
           } 
           // Give Next.js high priority
