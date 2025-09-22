@@ -31,6 +31,18 @@ export class CloudflareDeployer extends BaseDeployer {
       return;
     }
     
+    // For static sites, always use the generated config
+    if (config.framework === 'static') {
+      this.logger.info('Using static site wrangler configuration');
+      return;
+    }
+    
+    // For Angular, React Router, and React - don't override if config exists (they create their own)
+    if (['angular', 'react-router', 'react'].includes(config.framework) && await fs.pathExists('wrangler.jsonc')) {
+      this.logger.info('Using existing wrangler configuration');
+      return;
+    }
+    
     if (!shouldOverride && await fs.pathExists('wrangler.jsonc')) {
       this.logger.info('Using existing wrangler configuration');
       return;
@@ -49,6 +61,8 @@ export class CloudflareDeployer extends BaseDeployer {
     };
 
     switch (config.framework) {
+      case 'static':
+        return this.getStaticConfig(baseConfig, config);
       case 'angular':
         return this.getAngularConfig(baseConfig, config);
       case 'nuxt':
@@ -70,14 +84,24 @@ export class CloudflareDeployer extends BaseDeployer {
     }
   }
 
-  private getAngularConfig(base: any, config: DeployConfig): any {
+  private getStaticConfig(base: any, config: DeployConfig): any {
     return {
       ...base,
-      main: './dist/server/server.mjs',
-      compatibility_flags: ['nodejs_compat'],
+      main: './worker.js',
       assets: {
         binding: 'ASSETS',
-        directory: './dist/browser'
+        directory: config.buildDir
+      }
+    };
+  }
+
+  private getAngularConfig(base: any, config: DeployConfig): any {
+    // Angular is now configured as SPA (static) to avoid Node.js compatibility issues
+    return {
+      ...base,
+      assets: {
+        directory: './dist',
+        not_found_handling: 'single-page-application'
       }
     };
   }

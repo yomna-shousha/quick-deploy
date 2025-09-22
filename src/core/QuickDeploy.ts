@@ -22,11 +22,11 @@ export class QuickDeploy {
       // 1. Detect framework
       const framework = await this.detector.detect();
       if (!framework) {
-        throw new Error('Unable to detect framework. Supported: Angular, Astro, Next.js, Nuxt, React, React Router, Remix, SvelteKit');
+        throw new Error('Unable to detect framework or static site. Supported: Angular, Astro, Next.js, Nuxt, React, React Router, Remix, SvelteKit, Static HTML sites');
       }
 
-      // 2. Install dependencies if needed
-      if (!this.options.skipDependencies) {
+      // 2. Install dependencies if needed (skip for static sites)
+      if (framework.name !== 'static' && !this.options.skipDependencies) {
         await this.ensureDependencies();
       }
 
@@ -34,7 +34,7 @@ export class QuickDeploy {
       const builder = BuilderFactory.create(framework.name, this.logger);
       await builder.configure();
 
-      // 4. Build the project
+      // 4. Build the project (or prepare static files)
       const buildResult = await builder.build({
         packageManager: await this.detectPackageManager(),
         framework,
@@ -45,7 +45,7 @@ export class QuickDeploy {
         throw new Error('Build failed');
       }
 
-      // 5. Deploy to Cloudflare
+      // 5. Deploy to Cloudflare Workers
       const deployer = DeployerFactory.create('cloudflare', this.logger);
       const deployResult = await deployer.deploy({
         projectName: await this.getProjectName(),
@@ -58,7 +58,11 @@ export class QuickDeploy {
         throw new Error(`Deployment failed: ${deployResult.error}`);
       }
 
-      this.logger.success('🎉 Deployment completed successfully!');
+      if (framework.name === 'static') {
+        this.logger.success('🎉 Static site deployed successfully to Cloudflare Workers!');
+      } else {
+        this.logger.success('🎉 Deployment completed successfully!');
+      }
     } catch (error) {
       this.logger.error('❌ Deployment failed:', error);
       throw error;
@@ -76,7 +80,7 @@ export class QuickDeploy {
     if (framework) {
       this.logger.success(`Framework detected: ${framework.name}`);
     } else {
-      this.logger.warn('No framework detected');
+      this.logger.warn('No framework or static site detected');
     }
     this.logger.success('All diagnostic checks passed!');
   }
@@ -119,7 +123,10 @@ export class QuickDeploy {
       const packageJson = await fs.readJson('package.json');
       return packageJson.name || 'quick-deploy-app';
     } catch {
-      return 'quick-deploy-app';
+      // For static sites without package.json, use directory name
+      const currentDir = process.cwd();
+      const dirName = currentDir.split('/').pop() || 'static-site';
+      return dirName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
     }
   }
 }

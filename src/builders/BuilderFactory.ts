@@ -8,6 +8,7 @@ import { RemixBuilder } from './RemixBuilder.js';
 import { SvelteBuilder } from './SvelteBuilder.js';
 import { NuxtBuilder } from './NuxtBuilder.js';
 import { AngularBuilder } from './AngularBuilder.js';
+import { StaticSiteBuilder } from './StaticSiteBuilder.js';
 import { Logger } from '../utils/Logger.js';
 
 export class BuilderFactory {
@@ -30,6 +31,8 @@ export class BuilderFactory {
         return new NuxtBuilder(logger);
       case 'angular':
         return new AngularBuilder(logger);
+      case 'static':
+	return new StaticSiteBuilder(logger);
       default:
         throw new Error(`Unsupported framework: ${framework}`);
     }

@@ -7,6 +7,7 @@ interface FrameworkConfig {
   detection: {
     configFiles?: string[];
     dependencies?: string[];
+    staticFiles?: string[];
   };
   build: {
     command: string;
@@ -175,6 +176,23 @@ const FRAMEWORKS: FrameworkConfig[] = [
       command: 'npm run dev',
       port: 5173
     }
+  },
+  {
+    name: 'static',
+    detection: {
+      staticFiles: ['index.html']
+    },
+    build: {
+      command: '', // No build needed
+      outputDir: '.'
+    },
+    deploy: {
+      type: 'static'
+    },
+    dev: {
+      command: '', // No dev server for static sites
+      port: 8080
+    }
   }
 ];
 
@@ -185,12 +203,14 @@ export class FrameworkDetector {
     this.logger.info('Detecting framework...');
 
     const packageJson = await this.readPackageJson();
+    
+    // If no package.json, check for static site
     if (!packageJson) {
-      throw new Error('No package.json found - not a valid project');
+      return await this.detectStaticSite();
     }
 
     const scores = await Promise.all(
-      FRAMEWORKS.map(async (framework) => ({
+      FRAMEWORKS.filter(f => f.name !== 'static').map(async (framework) => ({
         framework,
         score: await this.scoreFramework(framework, packageJson)
       }))
@@ -201,11 +221,42 @@ export class FrameworkDetector {
       .sort((a, b) => b.score - a.score)[0];
 
     if (!bestMatch) {
-      return null;
+      // If no framework detected but package.json exists, might still be static
+      return await this.detectStaticSite();
     }
 
     this.logger.success(`Detected ${bestMatch.framework.name}`);
     return await this.enhanceFrameworkConfig(bestMatch.framework, packageJson);
+  }
+
+  private async detectStaticSite(): Promise<FrameworkConfig | null> {
+    this.logger.info('Checking for static site...');
+    
+    // Look for index.html in common locations
+    const staticLocations = [
+      'index.html', // Root directory
+      'public/index.html', // Public folder
+      'dist/index.html', // Built static site
+      'build/index.html', // Another common build folder
+      '_site/index.html', // Jekyll
+      'out/index.html' // Some static generators
+    ];
+
+    for (const location of staticLocations) {
+      if (await fs.pathExists(location)) {
+        this.logger.success('Detected static site');
+        const staticFramework = FRAMEWORKS.find(f => f.name === 'static')!;
+        
+        // Update output directory based on where we found index.html
+        if (location !== 'index.html') {
+          staticFramework.build.outputDir = location.replace('/index.html', '');
+        }
+        
+        return staticFramework;
+      }
+    }
+
+    return null;
   }
 
   private async scoreFramework(framework: FrameworkConfig, packageJson: any): Promise<number> {
@@ -277,6 +328,11 @@ export class FrameworkDetector {
   ): Promise<FrameworkConfig> {
     const enhanced = { ...framework };
     
+    // Don't adapt commands for static sites (no package manager)
+    if (framework.name === 'static') {
+      return enhanced;
+    }
+    
     // Adapt commands for detected package manager
     const packageManager = await this.detectPackageManager();
     enhanced.build.command = this.adaptCommand(framework.build.command, packageManager);
@@ -286,7 +342,7 @@ export class FrameworkDetector {
   }
 
   private adaptCommand(command: string, packageManager: string): string {
-    if (command.startsWith('npm run')) {
+    if (!command || command.startsWith('npm run')) {
       const script = command.replace('npm run ', '');
       switch (packageManager) {
         case 'pnpm': return `pnpm run ${script}`;
