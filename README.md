@@ -16,6 +16,7 @@ quick-deploy
 | **SvelteKit** | ✅ Working | SSR | Uses @sveltejs/adapter-cloudflare |
 | **React + Vite** | ✅ Working | Static SPA | Uses @cloudflare/vite-plugin |
 | **Nuxt** | ✅ Working | SSR | Uses nitro-cloudflare-dev adapter |
+| **Static HTML Sites** | ✅ Working | Static | Pure HTML/CSS/JS sites, no framework required |
 | **Angular** | ❌ Not Working | - | Node.js compatibility issues with SSR |
 | **React Router v7** | ❌ Not Working | - | Complex SSR setup incompatible with Workers |
 | **Remix** | ⚠️ Legacy Only | SSR | New project creations use React Router v7 |
@@ -148,6 +149,21 @@ quick-deploy
 - ✅ Automatic config updates for Cloudflare deployment
 - ✅ TypeScript definitions for Cloudflare context
 
+### Static HTML Sites
+```bash
+# For any directory with HTML files
+cd my-static-site
+# Must have an index.html file
+quick-deploy
+```
+
+**Features:**
+- ✅ Automatic detection of static sites with index.html
+- ✅ Worker script generation for file serving
+- ✅ Automatic .assetsignore creation to exclude development files
+- ✅ Clean URL support and SPA routing fallback
+- ✅ Proper content-type headers for all file types
+
 ### Remix (Legacy Projects Only)
 ```bash
 # For existing Remix projects
@@ -183,6 +199,7 @@ src/
 │   ├── ReactBuilder.ts
 │   ├── SvelteBuilder.ts
 │   ├── NuxtBuilder.ts
+│   ├── StaticSiteBuilder.ts
 │   ├── AngularBuilder.ts (not functional)
 │   ├── ReactRouterBuilder.ts (not functional)
 │   └── BaseBuilder.ts
@@ -264,13 +281,13 @@ quick-deploy doctor
 
 ## 📊 Framework Support Matrix
 
-| Feature | Next.js | Astro | SvelteKit | React+Vite | Nuxt | Angular | React Router |
-|---------|---------|-------|-----------|------------|------|---------|-------------|
-| SSR | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ |
-| Static Sites | ❌ | ✅ | ❌ | ✅ | ❌ | N/A | N/A |
-| API Routes | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A |
-| TypeScript | ✅ | ✅ | ✅ | ✅ | ✅ | N/A | N/A |
-| Auto Config | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| Feature | Next.js | Astro | SvelteKit | React+Vite | Nuxt | Static Sites | Angular | React Router |
+|---------|---------|-------|-----------|------------|------|-------------|---------|-------------|
+| SSR | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ |
+| Static Sites | ❌ | ✅ | ❌ | ✅ | ❌ | ✅ | N/A | N/A |
+| API Routes | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | N/A | N/A |
+| TypeScript | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | N/A | N/A |
+| Auto Config | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
 
 ## 🚀 Development
 
@@ -296,12 +313,17 @@ npx nuxi@latest init test-nuxt
 npx sv create test-svelte
 npm create vite@latest test-react -- --template react-ts
 
+# Test static site (any directory with index.html)
+mkdir test-static && cd test-static
+echo '<html><body><h1>Hello World</h1></body></html>' > index.html
+
 # Deploy each
 cd test-astro && quick-deploy
 cd ../test-nextjs && quick-deploy
 cd ../test-nuxt && quick-deploy
 cd ../test-svelte && quick-deploy
 cd ../test-react && quick-deploy
+cd ../test-static && quick-deploy
 ```
 
 **Quick Deploy** - Deploy modern web frameworks to Cloudflare Workers with zero configuration.
