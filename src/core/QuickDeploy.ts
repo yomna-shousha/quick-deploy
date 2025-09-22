@@ -3,7 +3,7 @@ import fs from 'fs-extra';
 import { FrameworkDetector } from './FrameworkDetector.js';
 import { BuilderFactory } from '../builders/BuilderFactory.js';
 import { DeployerFactory } from '../deployers/DeployerFactory.js';
-import { Logger } from '../utils/Logger.js';
+import { Logger, ProjectAssessment } from '../utils/Logger.js';
 import { CLIOptions } from '../types/index.js';
 
 export class QuickDeploy {
@@ -17,26 +17,36 @@ export class QuickDeploy {
 
   async deploy(): Promise<void> {
     try {
-      this.logger.info('🚀 Quick Deploy starting...');
+      this.logger.banner('Quick Deploy');
 
-      // 1. Detect framework
+      // 1. Detect framework and gather assessment data
+      this.logger.startPhase('Analyzing project');
       const framework = await this.detector.detect();
       if (!framework) {
         throw new Error('Unable to detect framework or static site. Supported: Angular, Astro, Next.js, Nuxt, React, React Router, Remix, SvelteKit, Static HTML sites');
       }
 
+      const packageManager = await this.detectPackageManager();
+      const assessment = await this.buildProjectAssessment(framework, packageManager);
+      
+      this.logger.phaseSuccess('Project analysis complete');
+      this.logger.showProjectAssessment(assessment);
+
       // 2. Install dependencies if needed (skip for static sites)
       if (framework.name !== 'static' && !this.options.skipDependencies) {
-        await this.ensureDependencies();
+        await this.ensureDependencies(packageManager);
       }
 
-      // 3. Get framework builder and configure
+      // 3. Configure framework
+      this.logger.startPhase('Configuring deployment');
       const builder = BuilderFactory.create(framework.name, this.logger);
       await builder.configure();
+      this.logger.phaseSuccess('Configuration complete');
 
-      // 4. Build the project (or prepare static files)
+      // 4. Build the project
+      this.logger.startPhase('Building project');
       const buildResult = await builder.build({
-        packageManager: await this.detectPackageManager(),
+        packageManager,
         framework,
         skipDependencies: this.options.skipDependencies || false
       });
@@ -44,8 +54,10 @@ export class QuickDeploy {
       if (!buildResult.success) {
         throw new Error('Build failed');
       }
+      this.logger.phaseSuccess('Build complete');
 
       // 5. Deploy to Cloudflare Workers
+      this.logger.startPhase('Deploying to Cloudflare Workers');
       const deployer = DeployerFactory.create('cloudflare', this.logger);
       const deployResult = await deployer.deploy({
         projectName: await this.getProjectName(),
@@ -58,35 +70,90 @@ export class QuickDeploy {
         throw new Error(`Deployment failed: ${deployResult.error}`);
       }
 
-      if (framework.name === 'static') {
-        this.logger.success('🎉 Static site deployed successfully to Cloudflare Workers!');
-      } else {
-        this.logger.success('🎉 Deployment completed successfully!');
-      }
+      this.logger.phaseSuccess('Deployment complete');
+
+      // 6. Show success summary
+      this.logger.showDeploymentSuccess(framework.name);
+
     } catch (error) {
-      this.logger.error('❌ Deployment failed:', error);
+      this.logger.error('Deployment failed:', error);
       throw error;
     }
   }
 
+  private async buildProjectAssessment(framework: any, packageManager: string): Promise<ProjectAssessment> {
+    const assessment: ProjectAssessment = {
+      framework: {
+        name: framework.name,
+        confidence: 'high' // Could be calculated based on detection score
+      },
+      build: {
+        command: framework.build.command,
+        outputDir: framework.build.outputDir,
+        packageManager
+      },
+      deployment: {
+        type: framework.deploy.type,
+        platform: 'cloudflare-workers',
+        adapter: framework.deploy.adapter
+      }
+    };
+
+    // Add version info if we can detect it
+    if (framework.name !== 'static') {
+      try {
+        const packageJson = await fs.readJson('package.json');
+        const deps = { ...packageJson.dependencies, ...packageJson.devDependencies };
+        
+        // Get framework version
+        const frameworkPackage = this.getFrameworkPackageName(framework.name);
+        if (frameworkPackage && deps[frameworkPackage]) {
+          assessment.framework.version = deps[frameworkPackage];
+        }
+
+        // Count dependencies
+        assessment.dependencies = {
+          total: Object.keys(deps).length
+        };
+      } catch {
+        // Package.json not found or invalid
+      }
+    }
+
+    return assessment;
+  }
+
+  private getFrameworkPackageName(frameworkName: string): string | null {
+    const packageMap: Record<string, string> = {
+      'nextjs': 'next',
+      'astro': 'astro',
+      'nuxt': 'nuxt',
+      'angular': '@angular/core',
+      'svelte': '@sveltejs/kit',
+      'react': 'react',
+      'remix': '@remix-run/react'
+    };
+    return packageMap[frameworkName] || null;
+  }
+
   async init(template?: string): Promise<void> {
-    this.logger.info('Initializing quick-deploy configuration...');
-    this.logger.success('Configuration initialized!');
+    this.logger.banner('Initialize Configuration');
+    this.logger.info('Configuration initialized');
   }
 
   async doctor(): Promise<void> {
-    this.logger.info('Running diagnostic checks...');
+    this.logger.banner('Diagnostic Check');
     const framework = await this.detector.detect();
     if (framework) {
       this.logger.success(`Framework detected: ${framework.name}`);
     } else {
       this.logger.warn('No framework or static site detected');
     }
-    this.logger.success('All diagnostic checks passed!');
+    this.logger.success('All diagnostic checks passed');
   }
 
   async clean(): Promise<void> {
-    this.logger.info('Cleaning build artifacts...');
+    this.logger.banner('Clean Build Artifacts');
     const dirsToClean = ['dist', 'build', 'out', '.next', '.output', '.svelte-kit', '.open-next'];
     
     for (const dir of dirsToClean) {
@@ -98,16 +165,17 @@ export class QuickDeploy {
       }
     }
     
-    this.logger.success('Clean completed!');
+    this.logger.success('Clean completed');
   }
 
-  private async ensureDependencies(): Promise<void> {
+  private async ensureDependencies(packageManager: string): Promise<void> {
     const hasNodeModules = await fs.pathExists('node_modules');
     if (!hasNodeModules) {
-      this.logger.info('Installing dependencies...');
-      const packageManager = await this.detectPackageManager();
+      this.logger.startPhase('Installing dependencies');
+      this.logger.runningCommand(`${packageManager} install`);
       const { execa } = await import('execa');
       await execa(packageManager, ['install'], { stdio: 'inherit' });
+      this.logger.phaseSuccess('Dependencies installed');
     }
   }
 
